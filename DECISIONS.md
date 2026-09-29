@@ -10,11 +10,23 @@ Format: ek entry per decision.
 
 ## D-001 — Cost calculation client-side, API se nahi
 
-**Date:** _fill karo_
-**Context:** _kya problem thi_
-**Decision:** _kya choose kiya_
-**Alternatives rejected:** _kya nahi choose kiya, aur kyun_
-**Tradeoff:** _kya kho diya is choice mein_
+**Date:** ```September 23, 2026```
+
+**Context:** ```Hamen OpenRouter API ko call karne ke baad response ke tokens aur unki total dynamic cost calculate karni thi. OpenRouter response object ke andar response.usage.cost (reported_cost) provide toh karta hai, par yeh har provider ya custom local setup par guaranteed nahi hota. Iske alawa, upstream API gateways par billing updates me thoda network lag ya discrepancy ho sakti hai. ```
+
+**Decision:** ```Humne cost calculation ko client-side (estimate_cost function ke andar) implement karne ka faisla kiya hai. Iske liye hum local PRICES configuration dictionary aur strict input/output tracking mechanism ka use kar rahe hain.```
+
+**Alternatives rejected:** 
+
+- **Fully relying on API Reported Cost:** OpenRouter ka response.usage.cost field OpenAI spec ka official part nahi hai. Agar hum future me OpenRouter se directly kisi open-source provider (jaise vLLM ya Ollama) ya seedhe official OpenAI SDK par switch karte hain, toh yeh custom attribute crash kar jayega. Isliye ise primary source banana reject kiya gaya.
+
+- **Blending average token pricing:** Input aur output tokens dono ko single flat rate par treat karna reject kar diya gaya, kyunki LLM ecosystem me output generation humesha input parsing se 4x-5x zyada computation-heavy aur mehngi hoti hai.
+
+**Tradeoff:**
+
+- **Maintenance Overhead:** Jab bhi providers (jaise Anthropic ya OpenAI) apne token prices badlenge ya naye models launch karenge, hamen local PRICES table ko manually up-to-date rakhna padega.
+
+- **Accuracy Mismatch:** Agar OpenRouter background me koi extra discount, free tier, ya internal rounding apply karta hai, toh hamare local calculation (cost (mera calc)) aur OpenRouter ke exact balance deduction (cost (OpenRouter)) me chhota sa difference (delta) dikh sakta hai.
 
 ---
 

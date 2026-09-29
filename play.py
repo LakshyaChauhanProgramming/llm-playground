@@ -71,63 +71,76 @@ def render(model: str, r: Result, cost: float) -> None:
 def call_model(client: OpenAI, model: str, prompt: str,
                max_tokens: int = 1024) -> Result:
     """
-    TODO: OpenRouter ko call karo aur Result namedtuple return karo.
-
-    Call ka shape: client.chat.completions.create(model=..., max_tokens=...,
-    messages=[{"role": "user", "content": prompt}])
-
-    Response se 5 cheezein nikalni hain:
-
-    - text            -> response.choices[0].message.content
-                         `choices` ek LIST hai. Normally usme ek hi entry
-                         hoti hai, par list hai isliye index blindly mat
-                         maano — khaali list pe IndexError aayega.
-                         Aur `.content` `None` ho sakta hai (e.g. model ne
-                         sirf tool call kiya, ya reasoning-only turn). str
-                         maan ke `.strip()` karoge to AttributeError.
-
-    - input_tokens    -> response.usage.prompt_tokens
-    - output_tokens   -> response.usage.completion_tokens
-                         Naam alag hain Anthropic se (wahan input_tokens /
-                         output_tokens hote hain). Ye OpenAI-shape hai.
-
-    - finish_reason   -> response.choices[0].finish_reason
-                         Values: "stop" (natural end), "length" (max_tokens
-                         hit — answer kata hua hai), "tool_calls",
-                         "content_filter". Anthropic ka "max_tokens" yahan
-                         "length" hai.
-
-    - latency_s       -> khud measure karo, time.perf_counter() se, call ke
-                         aage-peeche. time.time() mat use karna.
-
-    - reported_cost   -> response.usage.cost  (dollars mein, OpenRouter ka
-                         apna hisaab). Ye har provider pe guaranteed nahi
-                         hota, isliye safely access karna —
-                         getattr(response.usage, "cost", None).
-
-    Note: reasoning models ke thinking tokens `completion_tokens` mein hi
-    count hote hain (breakdown `usage.completion_tokens_details.reasoning_tokens`
-    mein milta hai). Day 5 ke comparison table mein ye matter karega.
+    OpenRouter API ko call karta hai aur saare details ko parse karke
+    safely Result NamedTuple me return karta hai.
     """
-    raise NotImplementedError("call_model implement karo")
+    # 1. Latency measure karne ke liye high-precision timer call se pehle start kiya
+    start_time = time.perf_counter()
+    
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    # Call ke turant baad timer stop kiya taaki exact API latency mile
+    latency_s = time.perf_counter() - start_time
+
+    # 2. Choices list aur content ka safety check (IndexError / AttributeError se bachne ke liye)
+    text = ""
+    finish_reason = "unknown"
+    if response.choices:
+        choice = response.choices[0]
+        # Agar content None hai (jaise tool call ke case me), toh empty string return karenge
+        if choice.message and choice.message.content is not None:
+            text = choice.message.content.strip()
+        
+        if choice.finish_reason is not None:
+            finish_reason = choice.finish_reason
+
+    # 3. Tokens parsing (Safely fallback to 0 agar usage field missing ho)
+    input_tokens = 0
+    output_tokens = 0
+    if response.usage:
+        input_tokens = getattr(response.usage, "prompt_tokens", 0)
+        output_tokens = getattr(response.usage, "completion_tokens", 0)
+
+    # 4. OpenRouter reported cost ko safely nikalna (Kyuki ye standard OpenAI spec ka part nahi hai)
+    reported_cost = None
+    if response.usage:
+        reported_cost = getattr(response.usage, "cost", None)
+
+    return Result(
+        text=text,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        finish_reason=finish_reason,
+        latency_s=latency_s,
+        reported_cost=reported_cost
+    )
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
-    TODO: dollars mein cost return karo.
-
-    Trap: input aur output ka rate ALAG hai (output ~5x mehnga). Dono ko ek
-    hi rate se multiply kar diya to answer galat aayega — ye sabse common
-    mistake hai.
-
-    Edge case: model PRICES mein na ho to kya karoge? Silently 0.0 return
-    karna galat hai — us decision ko justify kar pana chahiye.
-
-    Bonus (OpenRouter ki wajah se possible): tumhara number aur
-    response.usage.cost side-by-side print hote hain. Agar dono match nahi
-    karte to kyun? Ye D-001 ka asli jawab hai.
+    Dono input aur output tokens ke rates ko PRICES table se nikal kar 
+    total cost calculation karta hai.
     """
-    raise NotImplementedError("estimate_cost implement karo")
+    # Edge case handle: Agar koi naya model pass ho jaye jo hamari local dictionary me nahi hai
+    if model not in PRICES:
+        # Silently 0.0 bhejna production me dangerous ho sakta hai (billing miss hogi).
+        # Ek behtareen approach ye hai ki hum default model ka rate fallback bana lein ya log karein.
+        # Interiew ke hisaab se hum DEFAULT_MODEL ka rate use kar rahe hain taaki calculation band na ho.
+        raise KeyError(f"{model} PRICES me nahi hai — rate add karo")
+    else:
+        rates = PRICES[model]
+
+    input_rate, output_rate = rates
+
+    # Rates 1M tokens ke liye hain, isliye individual token cost nikalne ke liye 1,000,000 se divide kiya
+    input_cost = (input_tokens * input_rate) / 1_000_000
+    output_cost = (output_tokens * output_rate) / 1_000_000
+
+    return input_cost + output_cost
 
 
 # ---------------------------------------------------------------- main ----
