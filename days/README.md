@@ -21,7 +21,7 @@ ho ki us din exactly kya banaya tha, bina git history khodne ke.
 - OpenRouter ka reported `usage.cost` bhi dikhata hai + apne calc se difference.
 
 ## Day 2 — streaming + TTFT vs total latency
-**Snapshot:** _(complete hone par yahan aayega)_ · **Status:** 🚧 in progress
+**Snapshot:** [`day2/play.py`](./day2/play.py) · **Status:** ✅ complete
 
 - `call_model_streaming()` — `stream=True`, chunks aate hi read.
 - **TTFT** (pehla token kab aaya = perceived speed) aur **total latency** (pura
