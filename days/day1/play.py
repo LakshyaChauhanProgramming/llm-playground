@@ -45,9 +45,8 @@ class Result(NamedTuple):
     input_tokens: int
     output_tokens: int
     finish_reason: str
-    latency_s: float                # total: request bheja -> aakhri chunk
+    latency_s: float
     reported_cost: Optional[float]  # OpenRouter khud bhi cost batata hai
-    ttft_s: Optional[float] = None  # time-to-first-token (sirf streaming mein)
 
 
 def render(model: str, r: Result, cost: float) -> None:
@@ -58,14 +57,7 @@ def render(model: str, r: Result, cost: float) -> None:
     print(f"{'input tokens':<18} {r.input_tokens:,}")
     print(f"{'output tokens':<18} {r.output_tokens:,}")
     print(f"{'finish_reason':<18} {r.finish_reason}")
-    if r.ttft_s is not None:
-        # Streaming: TTFT = user ko pehla token dikhne ka time (perceived speed).
-        # generation time = pehle token ke baad baaki output banne ka time.
-        print(f"{'TTFT':<18} {r.ttft_s:.2f}s")
-        print(f"{'total latency':<18} {r.latency_s:.2f}s")
-        print(f"{'generation time':<18} {r.latency_s - r.ttft_s:.2f}s")
-    else:
-        print(f"{'latency':<18} {r.latency_s:.2f}s")
+    print(f"{'latency':<18} {r.latency_s:.2f}s")
     print(f"{'cost (mera calc)':<18} ${cost:.6f}")
     if r.reported_cost is not None:
         delta = cost - r.reported_cost
@@ -128,72 +120,6 @@ def call_model(client: OpenAI, model: str, prompt: str,
     )
 
 
-def call_model_streaming(client: OpenAI, model: str, prompt: str,
-                         max_tokens: int = 1024) -> Result:
-    """
-    Day 2 --- call_model ka streaming version.
-
-    Non-streaming (call_model) mein pura response ek saath aata hai, to "latency"
-    ka matlab sirf ek number hai. Streaming mein do alag cheezein hoti hain, aur
-    interview mein yahi distinction poocha jaata hai:
-
-      - TTFT  (time-to-first-token): request bheja -> PEHLA content token aaya.
-              Ye "perceived speed" hai — user ko screen pe kuch dikhna kab shuru
-              hota hai. Chatbots is number pe judge hote hain.
-      - total latency: request bheja -> AAKHRI chunk aaya. Pura jawab kab bana.
-
-    Ek gotcha: streaming mein usage (tokens/cost) by default NAHI aata. Uske liye
-    `stream_options={"include_usage": True}` maangna padta hai — tab ek extra
-    aakhri chunk aata hai jiska `choices` khaali hota hai aur `usage` bhara hua.
-
-    TODO marked steps tumhe bharni hain. Baaki (request setup, timer) given hai.
-    """
-    # ---- given: streaming request + timer start ----
-    start_time = time.perf_counter()
-
-    stream = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-        stream=True,
-        stream_options={"include_usage": True},  # aakhri chunk mein usage bhejo
-    )
-
-    # ---- state jise neeche wala loop bharega ----
-    parts: list[str] = []
-    ttft_s: Optional[float] = None
-    finish_reason = "unknown"
-    input_tokens = 0
-    output_tokens = 0
-    reported_cost = None
-
-    for chunk in stream:
-        # Har chunk mein choices khaali ho sakta hai (jaise usage-only aakhri
-        # chunk), isliye index karne se pehle check karo.
-
-        # TODO 1 (TTFT): agar is chunk mein pehla non-None content token aaya hai
-        #   aur ttft_s abhi tak None hai, to ttft_s = time.perf_counter() - start_time.
-        #   Content yahan hota hai: chunk.choices[0].delta.content
-
-        # TODO 2 (text): jo content token None nahi hai, use `parts` mein append karo.
-
-        # TODO 3 (finish_reason): jab chunk.choices[0].finish_reason populate ho
-        #   (None nahi), to use capture karo.
-
-        # TODO 4 (usage): aakhri chunk — jab chunk.choices khaali ho par
-        #   chunk.usage present ho — tab nikaalo:
-        #     input_tokens  = getattr(chunk.usage, "prompt_tokens", 0)
-        #     output_tokens = getattr(chunk.usage, "completion_tokens", 0)
-        #     reported_cost = getattr(chunk.usage, "cost", None)
-        pass
-
-    latency_s = time.perf_counter() - start_time
-
-    # TODO 5: parts ko join karke text banao (.strip()), aur Result return karo —
-    #   ttft_s bhi pass karna warna render TTFT line nahi dikhayega.
-    raise NotImplementedError("call_model_streaming: TODO 1-5 bharni hain")
-
-
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
     Dono input aur output tokens ke rates ko PRICES table se nikal kar 
@@ -220,19 +146,13 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 # ---------------------------------------------------------------- main ----
 
 def main() -> int:
-    # --stream flag ko kahin se bhi nikaal lo, baaki positional args bache rehte hain
-    args = sys.argv[1:]
-    stream = "--stream" in args
-    if stream:
-        args.remove("--stream")
-
-    if not args:
-        print('usage: python play.py "your prompt here" [model] [--stream]')
+    if len(sys.argv) < 2:
+        print('usage: python play.py "your prompt here" [model]')
         print(f'models: {", ".join(PRICES)}')
         return 1
 
-    prompt = args[0]
-    model = args[1] if len(args) > 1 else DEFAULT_MODEL
+    prompt = sys.argv[1]
+    model = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_MODEL
 
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
@@ -241,8 +161,7 @@ def main() -> int:
 
     client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
 
-    result = (call_model_streaming(client, model, prompt) if stream
-              else call_model(client, model, prompt))
+    result = call_model(client, model, prompt)
     cost = estimate_cost(model, result.input_tokens, result.output_tokens)
     render(model, result, cost)
     return 0
