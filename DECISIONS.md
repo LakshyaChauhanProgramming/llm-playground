@@ -74,4 +74,57 @@ to effective cost thoda zyada hai.
 
 ---
 
+## D-003 — Unknown model par `estimate_cost` crash karta hai, silent $0.00 nahi
+
+**Date:** 2026-09-29
+
+**Context:** `estimate_cost()` local `PRICES` table se rates leta hai (D-001).
+Sawaal: agar koi aisa model string aaye jo table mein nahi hai (typo, ya naya
+model jiska rate add karna bhool gaye), tab kya karein?
+
+**Decision:** `raise KeyError(f"{model} PRICES me nahi hai — rate add karo")`.
+Fail-fast — calculation ruk jaati hai aur error saaf dikhta hai.
+
+**Alternatives rejected:**
+- *Silent `return 0.0`* — production mein khatarnaak. Billing/cost tracking
+  chup-chaap $0 report karta rahega aur kisi ko pata bhi nahi chalega ki poora
+  ek model ka cost miss ho raha hai. "Cost visible banana" is project ka core
+  goal hai (README) — silent zero uske ekdum ulta hai.
+- *`DEFAULT_MODEL` ke rate pe fallback* — galat number dega, jo silent zero se
+  bhi bura ho sakta hai (plausible dikhta hai, hai galat).
+
+**Tradeoff:** Ek missing rate poore run ko rok deta hai. Par Week 1 measurement
+tool ke liye ye sahi tradeoff hai — galat number dene se behtar hai clearly
+rukna.
+
+---
+
+## D-004 — `call_model` mein defensive response parsing
+
+**Date:** 2026-09-29
+
+**Context:** OpenRouter kai upstream providers ko route karta hai (D-002).
+Response OpenAI shape mein normalize toh hota hai, par har field har baar
+guaranteed nahi: `choices` khaali ho sakta hai, `message.content` `None` ho
+sakta hai (jaise tool-call ya pure-refusal case mein), `usage` object missing
+ho sakta hai, aur `usage.cost` toh OpenAI spec ka part hi nahi hai.
+
+**Decision:** Har field ko guard karke nikaalte hain —
+- `if response.choices:` check ke baad hi `choices[0]` touch karte hain
+- `content is not None` verify karke `.strip()` karte hain
+- `getattr(response.usage, "prompt_tokens", 0)` — usage missing ho to `0`
+- `reported_cost = getattr(response.usage, "cost", None)` — non-standard field
+  safely `None` ho jaata hai
+
+**Alternatives rejected:**
+- *Seedha `response.choices[0].message.content.strip()`* — ek `IndexError` ya
+  `AttributeError` poora tool crash kar dega, aur latency/token data bhi haath
+  se nikal jaayega jo shayad response mein tha hi.
+
+**Tradeoff:** Thoda zyada boilerplate. Par comparison tool ka matlab hi ye hai
+ki wo alag-alag models/providers pe chale bina toote — defensive parsing wahi
+robustness deta hai.
+
+---
+
 _Naye decisions yahan add karte jao._

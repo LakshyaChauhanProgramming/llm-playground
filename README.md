@@ -74,15 +74,18 @@ khud ke runs se._
 
 | Model | Input $/1M | Output $/1M | Latency (p50) | Cost / 1k requests |
 |---|---|---|---|---|
-| `anthropic/claude-opus-5` | 5.00 | 25.00 | — | — |
-| `anthropic/claude-sonnet-5` | 2.00 | 10.00 | — | — |
+| `anthropic/claude-opus-4.8` | 5.00 | 25.00 | — | — |
+| `anthropic/claude-sonnet-5` | 3.00 | 15.00 | — | — |
 | `anthropic/claude-haiku-4.5` | 1.00 | 5.00 | — | — |
 
-Rates OpenRouter ke `/api/v1/models` endpoint se verify kiye (2026-09-17) —
-Anthropic ke direct rates se exactly match karte hain. OpenRouter **inference
-pe markup nahi lagata**; fee sirf credits kharidte waqt lagti hai (Stripe
-5.5%, minimum $0.80). Matlab per-token math wahi rehta hai, par *effective*
-cost ~5.5% zyada — ye distinction cost estimate karte waqt bolna padta hai.
+Rates OpenRouter ke `/api/v1/models` endpoint se verify kiye — Anthropic ke
+direct rates se exactly match karte hain. OpenRouter **inference pe markup nahi
+lagata**; fee sirf credits kharidte waqt lagti hai (Stripe 5.5%, minimum
+$0.80). Matlab per-token math wahi rehta hai, par *effective* cost ~5.5% zyada
+— ye distinction cost estimate karte waqt bolna padta hai.
+
+_Note:_ Sonnet 5 ka introductory pricing ($2/$10) **2026-08-31 ko khatam** ho
+gaya — ab standard $3/$15 hai.
 
 ## Decisions
 

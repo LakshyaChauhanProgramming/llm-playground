@@ -32,8 +32,8 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # dashes nahi ("claude-haiku-4.5", NOT "claude-haiku-4-5"). Ye ek classic
 # 404 ka source hai.
 PRICES = {
-    "anthropic/claude-opus-5":    (5.00, 25.00),
-    "anthropic/claude-sonnet-5":  (2.00, 10.00),
+    "anthropic/claude-opus-4.8":  (5.00, 25.00),
+    "anthropic/claude-sonnet-5":  (3.00, 15.00),
     "anthropic/claude-haiku-4.5": (1.00,  5.00),
 }
 
